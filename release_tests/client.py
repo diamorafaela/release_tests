@@ -22,9 +22,16 @@ class FrappeAPIError(Exception):
     cleanly in the release-test report instead of as opaque tracebacks.
     """
 
-    def __init__(self, message: str, status: int | None = None, server_messages: Any = None):
+    def __init__(
+        self,
+        message: str,
+        status: int | None = None,
+        server_messages: Any = None,
+        exc_type: str | None = None,
+    ):
         super().__init__(message)
         self.status = status
+        self.exc_type = exc_type
         self.server_messages = server_messages
 
 
@@ -203,8 +210,10 @@ class FrappeClient:
         if resp.ok:
             return
         server_messages = None
+        exc_type = None
         try:
             payload = resp.json()
+            exc_type = payload.get("exc_type")
             server_messages = (
                 payload.get("_server_messages")
                 or payload.get("exception")
@@ -216,6 +225,7 @@ class FrappeClient:
             f"{resp.request.method} {resp.url} -> {resp.status_code}: {server_messages}",
             status=resp.status_code,
             server_messages=server_messages,
+            exc_type=exc_type,
         )
 
 

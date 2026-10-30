@@ -1,5 +1,12 @@
 # release_tests
 
+## DiamoERP fork
+
+Work on branch `diamoerp-develop`. See the [Diamo test guide](docs/diamo.md)
+for suites, site requirements, coverage and Release Manager setup.
+For Diamo deployments, use `https://github.com/diamorafaela/release_tests`
+with branch `diamoerp-develop` instead of the upstream repository below.
+
 External HTTP release-test harness for Frappe sites. Given a running site, it logs
 in over the REST API and exercises a defined set of flows per **installed app**,
 adapting to whatever **version** is present (develop / v16 / v15), then reports

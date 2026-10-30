@@ -21,7 +21,7 @@ def _whoami(client: FrappeClient, ctx: dict) -> None:
 
 
 def _create_todo(client: FrappeClient, ctx: dict) -> None:
-    doc = client.insert({"doctype": "ToDo", "description": _TODO_DESC})
+    doc = client.insert({"doctype": "ToDo", "description": _TODO_DESC, "allocated_to": ctx["user"]})
     if not doc.get("name"):
         raise AssertionError("ToDo insert returned no name")
     ctx["todo"] = doc["name"]
