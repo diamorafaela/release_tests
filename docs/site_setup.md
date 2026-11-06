@@ -68,6 +68,24 @@ La suite de personalizaciones requiere una ejecución con Administrator mediante
 
 ## Comprobar sin modificar
 
+### Usar el perfil real de la validación
+
+Exportá el JSON de `Diamo Release Validation` desde el control.
+Guardalo como `/home/frappe/release-validation.json` en el servidor destino.
+También se acepta un archivo con el array de `profile_snapshot`.
+
+```bash
+bench --site test.releases.diamo.com.ar execute release_tests.site_setup.check \
+  --kwargs '{"profile_path":"/home/frappe/release-validation.json"}'
+```
+
+`prepare` acepta el mismo argumento. No combines `profile_path` con `suites`.
+El archivo define las suites exactas. El comando no consulta el perfil del control por HTTP.
+Sin estos argumentos, el comando comprueba solo las suites predeterminadas, no todo el grupo Diamo.
+Las suites sin requisitos cubiertos siguen apareciendo como bloqueos.
+
+### Comprobar el conjunto predeterminado
+
 ```bash
 bench --site test.releases.diamo.com.ar execute release_tests.site_setup.check
 ```
@@ -83,6 +101,14 @@ Este comando solo consulta registros, permisos, configuración y cupos. No prueb
 credenciales guardadas en Tools ni la conectividad HTTP. `ready: true` significa que
 pasaron estas comprobaciones previas; las suites todavía deben ejecutarse.
 Los comandos no están conectados automáticamente al flujo de validación de Tools.
+
+### Compañía y motor de pruebas
+
+Las suites genéricas prefieren `Diamo Release Test` cuando existe y el ejecutor puede verla.
+La preparación configura sus cuentas de inventario, mercadería recibida sin facturar y ajuste de stock.
+En sitios sin esa compañía, las suites conservan la selección anterior.
+Actualizá `release_tests` en ambos benches: el control ejecuta las suites y el destino ejecuta la preparación.
+La suite de filtros usa una marca distinta por ejecución. Conserva los ToDos anteriores como evidencia.
 
 ## Pilot sin `bench` en PATH
 

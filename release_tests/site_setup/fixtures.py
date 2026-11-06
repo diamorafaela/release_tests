@@ -22,6 +22,9 @@ class AccountingFixtures:
             "default_payable_account": self.accounts["Payable"],
             "default_income_account": self.accounts["Income Account"],
             "default_expense_account": self.accounts["Expense Account"],
+            "default_inventory_account": self.accounts["Stock"],
+            "stock_received_but_not_billed": self.accounts["Stock Received But Not Billed"],
+            "stock_adjustment_account": self.accounts["Stock Adjustment"],
         }.items():
             set_missing(self.company, field, value)
         self.company.save()
@@ -43,10 +46,14 @@ class AccountingFixtures:
             "Bank": "default_bank_account", "Cash": "default_cash_account",
             "Receivable": "default_receivable_account", "Payable": "default_payable_account",
             "Income Account": "default_income_account", "Expense Account": "default_expense_account",
+            "Stock": "default_inventory_account",
+            "Stock Received But Not Billed": "stock_received_but_not_billed",
+            "Stock Adjustment": "stock_adjustment_account",
         }
         for kind, root in {
             "Bank": "Asset", "Cash": "Asset", "Receivable": "Asset", "Payable": "Liability",
             "Income Account": "Income", "Expense Account": "Expense", "Tax": "Liability",
+            "Stock": "Asset", "Stock Received But Not Billed": "Liability", "Stock Adjustment": "Expense",
         }.items():
             existing = self.company.get(defaults.get(kind, ""))
             if existing:

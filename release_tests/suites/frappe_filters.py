@@ -21,6 +21,7 @@ without that pack those steps skip rather than fail.
 from __future__ import annotations
 
 import json
+import secrets
 from typing import ClassVar
 
 from ..client import FrappeAPIError, FrappeClient
@@ -36,10 +37,10 @@ _D3 = "2026-02-15"
 _RANGE = ["2026-01-01", "2026-01-31"]
 
 
-def _marked(client: FrappeClient, filters: list) -> set[str]:
+def _marked(client: FrappeClient, ctx: dict, filters: list) -> set[str]:
     rows = client.get_list(
         "ToDo",
-        filters=[["description", "like", f"%{RT_FILTER_MARKER}%"], *filters],
+        filters=[["description", "like", f"%{ctx['filter_marker']}%"], *filters],
         fields=["name"],
         limit=50,
     )
@@ -47,14 +48,12 @@ def _marked(client: FrappeClient, filters: list) -> set[str]:
 
 
 def _seed(client: FrappeClient, ctx: dict) -> None:
-    """Create three dated ToDos, replacing any left by a previous run."""
-    from ..reset import purge
-
-    purge(client, "ToDo", {"description": ["like", f"%{RT_FILTER_MARKER}%"]})
+    """Isolate this run from retained ToDos and concurrent executions."""
+    ctx["filter_marker"] = f"{RT_FILTER_MARKER}-{secrets.token_hex(16)}"
     ctx["todos"] = {}
     for label, date in (("d1", _D1), ("d2", _D2), ("d3", _D3)):
         doc = client.insert(
-            {"doctype": "ToDo", "description": f"{RT_FILTER_MARKER} {label}", "date": date}
+            {"doctype": "ToDo", "description": f"{ctx['filter_marker']} {label}", "date": date}
         )
         ctx["todos"][label] = doc["name"]
         # The server's own clock, taken from a row it just stamped. Avoids needing a
@@ -65,7 +64,7 @@ def _seed(client: FrappeClient, ctx: dict) -> None:
 
 def _between_on_date(client: FrappeClient, ctx: dict) -> None:
     """Baseline: a Date field filtered by an inclusive range."""
-    found = _marked(client, [["date", "between", _RANGE]])
+    found = _marked(client, ctx, [["date", "between", _RANGE]])
     expected = {ctx["todos"]["d1"], ctx["todos"]["d2"]}
     if found != expected:
         raise AssertionError(f"between on Date returned {found}, expected {expected}")
@@ -79,7 +78,7 @@ def _between_capitalised(client: FrappeClient, ctx: dict) -> None:
     in-Python path. The DB path lowercases the operator, so this asserts the two
     spellings agree end to end.
     """
-    found = _marked(client, [["date", "Between", _RANGE]])
+    found = _marked(client, ctx, [["date", "Between", _RANGE]])
     if found != ctx["db_result"]:
         raise AssertionError(
             f"'Between' returned {found} but 'between' returned {ctx['db_result']}"
@@ -88,7 +87,7 @@ def _between_capitalised(client: FrappeClient, ctx: dict) -> None:
 
 def _bounds_are_inclusive(client: FrappeClient, ctx: dict) -> None:
     """Both endpoints must be inside the range."""
-    found = _marked(client, [["date", "between", [_D1, _D2]]])
+    found = _marked(client, ctx, [["date", "between", [_D1, _D2]]])
     expected = {ctx["todos"]["d1"], ctx["todos"]["d2"]}
     if found != expected:
         raise AssertionError(f"bounds not inclusive: got {found}, expected {expected}")
@@ -102,7 +101,7 @@ def _datetime_end_of_day(client: FrappeClient, ctx: dict) -> None:
     the expansion the bound would be midnight and every row would be excluded.
     """
     today = ctx["server_today"]
-    found = _marked(client, [["creation", "between", [today, today]]])
+    found = _marked(client, ctx, [["creation", "between", [today, today]]])
     expected = set(ctx["todos"].values())
     if not expected.issubset(found):
         raise AssertionError(

@@ -10,7 +10,7 @@ QA_ROLE = "Release Test Executor"
 COMPANY = "Diamo Release Test"
 
 
-def prepare(suites=None):
+def prepare(suites=None, profile_path=None):
     """Create missing QA fixtures and report unmet prerequisites without changing license limits."""
     import frappe
 
@@ -19,7 +19,7 @@ def prepare(suites=None):
     from .preflight import Preflight
 
     require_administrator()
-    selected = select_suites(suites)
+    selected = profile_suites(suites, profile_path)
     previous = frappe.conf.developer_mode
     try:
         # Fixture saves must not export files into the candidate repositories.
@@ -41,12 +41,28 @@ def prepare(suites=None):
         frappe.conf.developer_mode = previous
 
 
-def check(suites=None, user=QA_USER):
+def check(suites=None, user=QA_USER, profile_path=None):
     """Read-only readiness report; does not execute suites or create fixtures."""
     from .preflight import Preflight
 
     require_administrator()
-    return Preflight(select_suites(suites), user).run()
+    return Preflight(profile_suites(suites, profile_path), user).run()
+
+
+def profile_suites(suites, profile_path):
+    import json
+    from pathlib import Path
+
+    if profile_path is None:
+        return select_suites(suites)
+    if suites is not None:
+        raise ValueError("Supply either suites or profile_path, not both.")
+    profile = json.loads(Path(profile_path).read_text())
+    if isinstance(profile, dict):
+        profile = profile["profile_snapshot"]
+    if isinstance(profile, str):
+        profile = json.loads(profile)
+    return select_suites([row["suite"] for row in profile])
 
 
 def select_suites(suites):

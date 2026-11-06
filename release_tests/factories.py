@@ -64,6 +64,11 @@ def _hsn_code(client: FrappeClient) -> str | None:
 
 
 def ensure_company(client: FrappeClient) -> str:
+    from .site_setup import COMPANY
+
+    prepared = client.get_list("Company", filters={"name": COMPANY}, fields=["name"], limit=1)
+    if prepared:
+        return prepared[0]["name"]
     existing = client.get_list("Company", fields=["name"], limit=1)
     if existing:
         # Prefer whatever company the site already has — fresh sites have one

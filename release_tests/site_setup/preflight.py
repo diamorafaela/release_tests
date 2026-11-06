@@ -60,6 +60,8 @@ class Preflight:
                 self.permission(doctype, "create")
         if "diamo_base_access" in self.suites:
             self.permission("User", "create")
+        if self.suites & {"hrms", "hrms_org", "hrms_leave", "hrms_expense"}:
+            self.permission("Employee", "create")
 
     def check_accounting(self):
         if not self.exists("Company", COMPANY):
@@ -97,6 +99,11 @@ class Preflight:
             for action in ("read", "create", "write", "submit", "cancel"):
                 self.permission(dt, action)
         self.permission("GL Entry", "read")
+        if self.suites & {"erpnext_stock", "erpnext_buying", "erpnext_selling", "erpnext_batched",
+                          "erpnext_serialised", "erpnext_manufacturing"}:
+            for field in ("default_inventory_account", "stock_received_but_not_billed", "stock_adjustment_account"):
+                if not company.get(field):
+                    self.blockers.append(f"Company is missing {field}.")
         if self.suites & {"diamo_perceptions", "diamo_withholdings"}:
             self.check_fiscal(company)
 

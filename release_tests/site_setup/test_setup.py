@@ -31,6 +31,11 @@ class TestSiteSetup(IntegrationTestCase):
             AccountingFixtures().prepare()
         self.assertEqual(frappe.db.count("Account", {"company": name}), accounts)
         self.assertEqual(frappe.db.get_value("Company", name, "default_currency"), "ARS")
+        company = frappe.get_doc("Company", name)
+        for field in ("default_inventory_account", "stock_received_but_not_billed", "stock_adjustment_account"):
+            account = frappe.get_doc("Account", company.get(field))
+            self.assertEqual(account.company, name)
+            self.assertFalse(account.is_group)
         for kind in ("Bank", "Cash"):
             payment = frappe.get_doc("Mode of Payment", f"Release Test {kind}")
             self.assertEqual(len([row for row in payment.accounts if row.company == name]), 1)
@@ -41,6 +46,25 @@ class TestSiteSetup(IntegrationTestCase):
         with self.assertRaises(frappe.ValidationError):
             ensure("Role", name, {"desk_access": 0}, verify=("desk_access",))
         self.assertEqual(frappe.db.get_value("Role", name, "desk_access"), 1)
+
+    def test_filter_runs_are_isolated_without_deleting_other_runs(self):
+        from release_tests.suites.frappe_filters import _between_on_date, _seed
+
+        class LocalClient:
+            def insert(self, values):
+                return frappe.get_doc(values).insert().as_dict()
+
+            def get_list(self, doctype, **kwargs):
+                return frappe.get_list(doctype, **kwargs)
+
+        client = LocalClient()
+        first, second = {}, {}
+        _seed(client, first)
+        _seed(client, second)
+        _between_on_date(client, first)
+        _between_on_date(client, second)
+        self.assertNotEqual(first["filter_marker"], second["filter_marker"])
+        self.assertTrue(frappe.db.exists("ToDo", first["todos"]["d1"]))
 
     def test_fiscal_fixtures_can_be_created_and_repeated(self):
         fixtures = (
