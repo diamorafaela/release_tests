@@ -26,8 +26,8 @@ def prepare(suites=None, profile_path=None):
         frappe.conf.developer_mode = 0
         if "erpnext" in frappe.get_installed_apps():
             AccountingFixtures().prepare(fiscal=bool(set(selected) & {"diamo_perceptions", "diamo_withholdings"}))
-        identity_errors = ensure_executor()
-        if "frappe_filters" in selected or "customisations" in selected:
+        identity_errors = ensure_executor(selected)
+        if set(selected) & {"frappe_filters", "diamo_frappe_filters", "customisations"}:
             ensure_filter_probe()
         result = Preflight(selected, QA_USER).run()
         result["blockers"] = list(dict.fromkeys(identity_errors + result["blockers"]))
@@ -72,6 +72,10 @@ def select_suites(suites):
 
     if suites is None:
         return list(DEFAULT_SUITES)
+    if suites == "diamo":
+        from release_tests.diamo_contracts import CORE_SUITES
+
+        return list(CORE_SUITES)
     if isinstance(suites, str):
         suites = json.loads(suites) if suites.startswith("[") else suites.split(",")
     if not isinstance(suites, (list, tuple)) or not suites:

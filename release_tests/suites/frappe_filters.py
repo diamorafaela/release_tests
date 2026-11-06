@@ -26,7 +26,7 @@ from typing import ClassVar
 
 from ..client import FrappeAPIError, FrappeClient
 from ..gating import Versions
-from .base import ReleaseSuite, SkipStep, Step
+from .base import CheckFailed, ReleaseSuite, SkipStep, Step
 
 RT_FILTER_MARKER = "RT-FILTER-PROBE"
 
@@ -154,7 +154,9 @@ def _in_python_agrees_with_db(client: FrappeClient, ctx: dict) -> None:
         if in_python != in_db:
             mismatches.append(f"{date}: evaluate_filters={in_python} but DB={in_db}")
     if mismatches:
-        raise AssertionError("in-Python and DB filter paths disagree — " + "; ".join(mismatches))
+        raise CheckFailed("Python between agrees with SQL", expected="matching results",
+                          actual="; ".join(mismatches),
+                          hint="This upstream capability is not in the Diamo v16.20 baseline; use diamo_frappe_filters for its supported range contract.")
 
 
 def _iso_t_bound_not_widened(client: FrappeClient, ctx: dict) -> None:

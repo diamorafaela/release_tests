@@ -151,3 +151,18 @@ class TestSiteSetup(IntegrationTestCase):
         self.assertEqual(user.api_key, credentials["api_key"])
         self.assertEqual(user.get_password("api_secret"), credentials["api_secret"])
         self.assertEqual(len(user.roles), len({row.role for row in user.roles}))
+
+    def test_curated_profile_is_repeatable_and_preserves_operator_edits(self):
+        from release_tests.profiles import install_diamo
+
+        if not frappe.db.exists("DocType", "Test Case Group"):
+            self.skipTest("Release Manager is not installed")
+        first = install_diamo()
+        self.assertEqual(install_diamo(), first)
+        group = frappe.get_doc("Test Case Group", first["profile"])
+        group.remove(group.test_cases[-1])
+        group.save()
+        with self.assertRaisesRegex(frappe.ValidationError, "differs from the shipped profile"):
+            install_diamo()
+        group.reload()
+        self.assertEqual(len(group.test_cases), len(first["suites"]) - 1)

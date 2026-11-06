@@ -3,6 +3,7 @@
 import frappe
 
 from . import COMPANY, DEFAULT_SUITES
+from release_tests.diamo_contracts import CORE_SUITES
 
 
 class Preflight:
@@ -18,7 +19,7 @@ class Preflight:
         for entry in catalog():
             if entry["suite"] in self.suites and entry["required_app"] not in installed:
                 self.blockers.append(f"{entry['suite']}: install {entry['required_app']} or remove the suite.")
-        unsupported = self.suites - set(DEFAULT_SUITES) - {"customisations", "diamo_hrms_payments"}
+        unsupported = self.suites - set(DEFAULT_SUITES) - set(CORE_SUITES) - {"customisations", "diamo_hrms_payments"}
         if unsupported:
             self.blockers.append("Prerequisites not yet covered by this checker: " + ", ".join(sorted(unsupported)))
         self.check_identity()
@@ -27,8 +28,13 @@ class Preflight:
                 self.check_accounting()
             else:
                 self.blockers.append("ERPNext is required for the accounting fixtures.")
-        if "frappe_filters" in self.suites or "customisations" in self.suites:
+        if self.suites & {"frappe_filters", "diamo_frappe_filters", "customisations"}:
             self.check_scripts()
+        if "diamo_customizations" in self.suites:
+            self.check_fork_contracts(installed)
+        if "frappe_jinja_sandbox" in self.suites:
+            for action in ("read", "create", "write"):
+                self.permission("Print Format", action)
         if "customisations" in self.suites:
             self.permission("Custom Field", "create")
             self.permission("Client Script", "create")
@@ -62,6 +68,20 @@ class Preflight:
             self.permission("User", "create")
         if self.suites & {"hrms", "hrms_org", "hrms_leave", "hrms_expense"}:
             self.permission("Employee", "create")
+        if "erpnext_manufacturing" in self.suites:
+            for doctype in ("BOM", "Work Order", "Stock Entry"):
+                for action in ("read", "create", "write", "submit"):
+                    self.permission(doctype, action)
+
+    def check_fork_contracts(self, installed):
+        if not {"diamoerp_base", "diamoerp_argentina"} <= installed:
+            self.blockers.append("Diamo contracts require Base and Argentina.")
+            return
+        from .contracts import check_runtime_contracts
+
+        self.blockers.extend(check_runtime_contracts())
+        if self.user == "Administrator":
+            self.blockers.append("diamo_customizations must test Base boundaries with the operational QA user.")
 
     def check_accounting(self):
         if not self.exists("Company", COMPANY):

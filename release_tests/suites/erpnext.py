@@ -37,18 +37,9 @@ def _sales_invoice(client: FrappeClient, ctx: dict) -> None:
 
 
 def _payment_entry(client: FrappeClient, ctx: dict) -> None:
-    # get_payment_entry builds a fully-populated PE against the invoice — the
-    # same call the ERPNext UI uses, so we don't have to hand-pick GL accounts.
-    pe = client.call(
-        "erpnext.accounts.doctype.payment_entry.payment_entry.get_payment_entry",
-        dt="Sales Invoice",
-        dn=ctx["invoice"],
-    )
-    pe["doctype"] = "Payment Entry"
-    draft = client.insert(pe)
-    submitted = client.submit({**draft})
-    if submitted.get("docstatus") != 1:
-        raise AssertionError("Payment Entry not submitted")
+    from .payment_flow import settle_invoice
+
+    submitted = settle_invoice(client, "Sales Invoice", ctx["invoice"])
     ctx["payment"] = submitted["name"]
 
 

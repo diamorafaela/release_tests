@@ -20,6 +20,9 @@ def all_suites() -> list[ReleaseSuite]:
         diamo_argentina_payments,
         diamo_argentina_buying,
         diamo_base_access,
+        diamo_customizations,
+        diamo_frappe_filters,
+        diamo_purchase_contracts,
         diamo_combined_receipts,
         diamo_perceptions,
         diamo_withholdings,
@@ -56,6 +59,9 @@ def all_suites() -> list[ReleaseSuite]:
 
     return [
         core_frappe.CoreFrappeSuite(),
+        diamo_customizations.DiamoCustomizationsSuite(),
+        diamo_frappe_filters.DiamoFrappeFiltersSuite(),
+        diamo_purchase_contracts.DiamoPurchaseContractsSuite(),
         diamo_argentina_payments.DiamoArgentinaPaymentsSuite(),
         diamo_argentina_buying.DiamoArgentinaBuyingSuite(),
         diamo_combined_receipts.DiamoCombinedReceiptsSuite(),

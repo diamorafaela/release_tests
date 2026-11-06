@@ -5,12 +5,12 @@ from .fixtures import ensure
 
 ROLES = (
     "System Manager", "Accounts Manager", "Sales Manager", "Purchase Manager",
-    "Stock Manager", "Manufacturing Manager", "Projects Manager",
+    "Stock Manager", "Manufacturing Manager", "Manufacturing User", "Projects Manager",
     "Sales Master Manager", "Purchase Master Manager", "Item Manager",
 )
 
 
-def ensure_executor():
+def ensure_executor(suites=()):
     ensure("Role", QA_ROLE, {"role_name": QA_ROLE, "desk_access": 1, "is_custom": 1})
     existing = frappe.db.exists("User", QA_USER)
     if existing:
@@ -26,7 +26,10 @@ def ensure_executor():
             "send_welcome_email": 0, "roles": [{"role": QA_ROLE}],
         })
     assigned = {row.role for row in user.roles}
-    for role in ROLES:
+    roles = list(ROLES)
+    if any(name.startswith("hrms") or name.startswith("v16p_hrms") for name in suites):
+        roles.extend(("HR Manager", "HR User", "Expense Approver", "Leave Approver"))
+    for role in roles:
         if role not in assigned and frappe.db.exists("Role", {"name": role, "disabled": 0}):
             user.append("roles", {"role": role})
     frappe.db.savepoint("qa_executor")

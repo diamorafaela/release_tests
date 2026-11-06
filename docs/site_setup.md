@@ -1,5 +1,8 @@
 # Preparar un sitio QA de Diamo
 
+Para los forks de Diamo, usá el [perfil de regresión Diamo Forks](diamo-forks.md).
+`prepare/check --kwargs '{"suites":"diamo"}'` selecciona sus contratos de Base, Argentina, Frappe y ERPNext.
+
 `release_tests.site_setup` prepara los datos locales que usan las suites Diamo.
 Se ejecuta en el bench del sitio de pruebas como Administrator. No expone métodos HTTP.
 El paquete `release_tests` debe estar disponible en el entorno Python del bench.

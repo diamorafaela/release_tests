@@ -114,13 +114,25 @@ class DiamoBaseAccessSuite(ReleaseSuite):
             links = reduced.get_list(
                 "Sales Invoice",
                 filters={"name": invoice["name"]},
-                fields=["name", "grand_total", "outstanding_amount"],
+                fields=["name"],
             )
+            if links != [{"name": invoice["name"]}]:
+                raise CheckFailed("reduced user can select the invoice link without extra fields",
+                                  expected=str([{"name": invoice["name"]}]), actual=str(links))
+            try:
+                links = reduced.get_list(
+                    "Sales Invoice", filters={"name": invoice["name"]},
+                    fields=["name", "grand_total", "base_grand_total", "outstanding_amount"],
+                )
+            except FrappeAPIError as error:
+                if error.status == 403 and error.exc_type == "PermissionError":
+                    return
+                raise
             exposed = sorted({key for row in links for key in row if key != "name"})
             if exposed:
                 raise CheckFailed(
                     "reduced user invoice search must not expose financial amounts",
-                    expected="no grand_total or outstanding_amount in the response",
+                    expected="no grand_total, base_grand_total or outstanding_amount in the response",
                     actual=f"exposed fields: {exposed}",
                     user=reduced.logged_in_user,
                     roles=["Usuario Reducido de Proyecto"],

@@ -61,13 +61,24 @@ def test_secondary_identity_never_inherits_admin_authentication():
         assert not secondary.session.cookies
 
 
-def test_denied_document_read_does_not_hide_financial_list_leak():
+@pytest.mark.parametrize("field", ["grand_total", "base_grand_total", "outstanding_amount"])
+def test_denied_document_read_does_not_hide_financial_list_leak(field):
     admin, reduced = Mock(), Mock()
     admin.insert.return_value = {"name": "TEST-INVOICE"}
     reduced.get_doc.side_effect = FrappeAPIError("denied", status=403, exc_type="PermissionError")
-    reduced.get_list.return_value = [{"name": "TEST-INVOICE", "outstanding_amount": 100}]
+    reduced.get_list.side_effect = [[{"name": "TEST-INVOICE"}], [{"name": "TEST-INVOICE", field: 100}]]
     reduced.logged_in_user = "reduced@example.com"
     with pytest.raises(CheckFailed) as failure:
         DiamoBaseAccessSuite().reject_invoice_access(admin, reduced, "Test Customer")
-    assert failure.value.details["actual"] == "exposed fields: ['outstanding_amount']"
+    assert failure.value.details["actual"] == f"exposed fields: ['{field}']"
+    admin.delete.assert_called_once_with("Sales Invoice", "TEST-INVOICE")
+
+
+def test_rejected_financial_projection_preserves_link_access():
+    admin, reduced = Mock(), Mock()
+    denied = FrappeAPIError("denied", status=403, exc_type="PermissionError")
+    admin.insert.return_value = {"name": "TEST-INVOICE"}
+    reduced.get_doc.side_effect = denied
+    reduced.get_list.side_effect = [[{"name": "TEST-INVOICE"}], denied]
+    DiamoBaseAccessSuite().reject_invoice_access(admin, reduced, "Test Customer")
     admin.delete.assert_called_once_with("Sales Invoice", "TEST-INVOICE")

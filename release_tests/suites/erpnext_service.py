@@ -26,13 +26,9 @@ def _sales_invoice(client: FrappeClient, ctx: dict) -> None:
 
 
 def _payment(client: FrappeClient, ctx: dict) -> None:
-    pe = client.call(
-        "erpnext.accounts.doctype.payment_entry.payment_entry.get_payment_entry",
-        dt="Sales Invoice",
-        dn=ctx["invoice"],
-    )
-    pe["doctype"] = "Payment Entry"
-    client.submit({**client.insert(pe)})
+    from .payment_flow import settle_invoice
+
+    settle_invoice(client, "Sales Invoice", ctx["invoice"])
 
 
 def _verify_settled(client: FrappeClient, ctx: dict) -> None:

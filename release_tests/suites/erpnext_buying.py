@@ -52,18 +52,17 @@ def _purchase_invoice(client: FrappeClient, ctx: dict) -> None:
         source_name=ctx["pr"],
     )
     pi["doctype"] = "Purchase Invoice"
-    pi["bill_no"] = f"SMK-{ctx['po']}"
+    # A non-fiscal Diamo purchase leaves all four fiscal identifiers empty.
+    # Setting only bill_no activates fiscal validation and is an invalid document.
+    if "diamoerp_argentina" not in client.get_versions():
+        pi["bill_no"] = f"SMK-{ctx['po']}"
     ctx["pi"] = client.submit({**client.insert(pi)})["name"]
 
 
 def _payment(client: FrappeClient, ctx: dict) -> None:
-    pe = client.call(
-        "erpnext.accounts.doctype.payment_entry.payment_entry.get_payment_entry",
-        dt="Purchase Invoice",
-        dn=ctx["pi"],
-    )
-    pe["doctype"] = "Payment Entry"
-    client.submit({**client.insert(pe)})
+    from .payment_flow import settle_invoice
+
+    settle_invoice(client, "Purchase Invoice", ctx["pi"])
 
 
 def _verify_settled(client: FrappeClient, ctx: dict) -> None:
