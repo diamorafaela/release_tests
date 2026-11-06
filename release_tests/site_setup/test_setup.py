@@ -4,7 +4,7 @@ import frappe
 from frappe.tests import IntegrationTestCase
 
 from . import QA_USER, check, prepare
-from .fixtures import AccountingFixtures, ensure
+from .fixtures import AccountingFixtures, ensure, ensure_leaf_group
 
 
 class TestSiteSetup(IntegrationTestCase):
@@ -44,6 +44,12 @@ class TestSiteSetup(IntegrationTestCase):
 
     def test_fiscal_fixtures_can_be_created_and_repeated(self):
         fixtures = (
+            ("Customer", "Release Test Customer"),
+            ("Supplier", "Release Test Supplier"),
+            ("Item", "RT-ITEM"),
+            ("Customer Group", "Release Test Customer Group"),
+            ("Supplier Group", "Release Test Supplier Group"),
+            ("Item Group", "Release Test Item Group"),
             ("Impuesto de Percepcion", "Release Test IVA 3%"),
             ("Impuesto de Retencion", "Release Test IIBB 2.5%"),
             ("Customer", "Release Test Fiscal Customer"),
@@ -67,6 +73,21 @@ class TestSiteSetup(IntegrationTestCase):
         pos = frappe.get_doc("Punto de Venta", "Release Test Manual")
         self.assertEqual(pos.habilitado, 1)
         self.assertEqual(len(pos.secuencias), 1)
+        for doctype, master in (
+            ("Customer", "Release Test Customer"), ("Customer", "Release Test Fiscal Customer"),
+            ("Supplier", "Release Test Supplier"), ("Supplier", "Release Test Fiscal Supplier"),
+            ("Item", "RT-ITEM"),
+        ):
+            group = frappe.db.get_value(doctype, master, f"{doctype.lower()}_group")
+            self.assertEqual(group, f"Release Test {doctype} Group")
+            self.assertEqual(frappe.db.get_value(f"{doctype} Group", group, "is_group"), 0)
+
+    def test_existing_qa_group_must_be_a_leaf(self):
+        name = ensure_leaf_group("Customer")
+        frappe.db.set_value("Customer Group", name, "is_group", 1)
+        with self.assertRaisesRegex(frappe.ValidationError, "Fixture conflict"):
+            ensure_leaf_group("Customer")
+        self.assertEqual(frappe.db.get_value("Customer Group", name, "is_group"), 1)
 
     def test_non_administrator_cannot_prepare_or_check(self):
         frappe.set_user("Guest")

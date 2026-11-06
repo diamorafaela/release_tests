@@ -28,7 +28,7 @@ class AccountingFixtures:
         self.create_parties()
         ensure("Item", "RT-ITEM", {
             "item_code": "RT-ITEM", "item_name": "Release Test Service", "is_stock_item": 0,
-            "is_fixed_asset": 0, "item_group": "All Item Groups", "stock_uom": "Nos",
+            "is_fixed_asset": 0, "item_group": ensure_leaf_group("Item"), "stock_uom": "Nos",
             "standard_rate": 100,
         }, verify=("is_stock_item", "is_fixed_asset"))
         self.create_payments()
@@ -77,11 +77,11 @@ class AccountingFixtures:
             }).name
         customer = ensure("Customer", "Release Test Customer", {
             "customer_name": "Release Test Customer", "customer_type": "Company",
-            "customer_group": "All Customer Groups", "territory": territory,
+            "customer_group": ensure_leaf_group("Customer"), "territory": territory,
         })
         supplier = ensure("Supplier", "Release Test Supplier", {
             "supplier_name": "Release Test Supplier", "supplier_type": "Company",
-            "supplier_group": "All Supplier Groups",
+            "supplier_group": ensure_leaf_group("Supplier"),
         })
         for doc, kind in ((customer, "Receivable"), (supplier, "Payable")):
             ensure_child(doc, "accounts", "company", COMPANY, {
@@ -98,6 +98,14 @@ class AccountingFixtures:
                 "company": COMPANY, "default_account": self.accounts[kind],
             })
             doc.save()
+
+
+def ensure_leaf_group(party_type):
+    field = f"{party_type.lower()}_group"
+    return ensure(f"{party_type} Group", f"Release Test {party_type} Group", {
+        f"{field}_name": f"Release Test {party_type} Group",
+        f"parent_{field}": f"All {party_type} Groups", "is_group": 0,
+    }, verify=("is_group", f"parent_{field}")).name
 
 
 def ensure(doctype, name, values, verify=()):
