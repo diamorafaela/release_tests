@@ -3,13 +3,13 @@
 import json
 
 from . import diamo_accounting as checks
-from .base import ReleaseSuite, Step
+from .base import CheckFailed, ReleaseSuite, Step
 
 
 class DiamoPerceptionsSuite(ReleaseSuite):
     name = "diamo_perceptions"
     required_app = "diamoerp_argentina"
-    description = "IVA perception 3%: amount, repeated save, quantity recalculation and minimum base. Drafts only."
+    description = "IVA perception 3%: rounding, repeated save, quantity changes and crossing the minimum base. Drafts only."
 
     def build_steps(self, versions):
         return [
@@ -18,6 +18,9 @@ class DiamoPerceptionsSuite(ReleaseSuite):
             Step("save again without duplicate perception", self.repeat),
             Step("double quantity and recalculate perception to 60", self.recalculate),
             Step("exclude new invoice below taxable minimum", self.below_minimum),
+            Step("perception minimum includes 100 but excludes 99.99", self.minimum_boundary),
+            Step("round fractional perception and preserve it on repeated save", self.fractional_tax),
+            Step("remove and restore perception when crossing taxable minimum", self.cross_minimum),
         ]
 
     def prepare(self, client, ctx):
@@ -55,6 +58,39 @@ class DiamoPerceptionsSuite(ReleaseSuite):
         if invoice.get("taxes"):
             raise AssertionError("below-minimum invoice must not have perception taxes")
         checks.amount(invoice.get("grand_total"), 50, "below-minimum total")
+
+    def minimum_boundary(self, client, ctx):
+        invoice = self.draft(client, ctx, 99.99)
+        if invoice.get("taxes"):
+            raise AssertionError("99.99 is below the perception minimum of 100")
+        checks.amount(invoice.get("grand_total"), "99.99", "just below minimum total")
+        boundary = {**ctx, "invoice": self.draft(client, ctx, 100)}
+        self.verify(boundary, 3, 103)
+
+    def fractional_tax(self, client, ctx):
+        fractional = {**ctx, "invoice": self.draft(client, ctx, 100.25)}
+        self.verify(fractional, "3.01", "103.26")
+        for _ in range(2):
+            fractional["invoice"] = client.call("frappe.client.save", doc=json.dumps(fractional["invoice"]))
+            self.verify(fractional, "3.01", "103.26")
+
+    def cross_minimum(self, client, ctx):
+        changing = {**ctx, "invoice": self.draft(client, ctx, 100)}
+        self.verify(changing, 3, 103)
+        for rate, tax, total in ((99.99, 0, 99.99), (100, 3, 103), (99.99, 0, 99.99)):
+            changing["invoice"]["items"][0]["rate"] = rate
+            changing["invoice"] = client.call("frappe.client.save", doc=json.dumps(changing["invoice"]))
+            if tax:
+                self.verify(changing, tax, total)
+            else:
+                if changing["invoice"].get("taxes"):
+                    raise CheckFailed(
+                        "lowering the taxable base must remove the perception row",
+                        expected="no perception below taxable base 100",
+                        actual=f"net={changing['invoice'].get('net_total')}, total={changing['invoice'].get('grand_total')}",
+                        hint="Review perception removal when an existing invoice crosses the minimum base.",
+                    )
+                checks.amount(changing["invoice"].get("grand_total"), total, "recalculated below minimum total")
 
     def draft(self, client, ctx, rate):
         return client.insert({

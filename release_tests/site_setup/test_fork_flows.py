@@ -119,6 +119,42 @@ class TestForkFlows(IntegrationTestCase):
 
         self.run_flow(ERPNextServiceSuite())
 
+    def test_partial_receipts_and_out_of_order_reversal(self):
+        from release_tests import factories
+        from release_tests.suites import diamo_accounting, diamo_receipt_edges
+
+        context = {"company": factories.ensure_company(self.client),
+                   "customer": factories.ensure_customer(self.client),
+                   "item": factories.ensure_item(self.client)}
+        diamo_accounting.invoice(self.client, context)
+        diamo_receipt_edges.partial_receipts(self.client, context)
+        diamo_receipt_edges.reverse_receipts(self.client, context)
+        diamo_receipt_edges.multiple_invoices(self.client, context)
+
+    def test_reduced_user_cannot_mutate_invoice_or_read_value_rpc(self):
+        from release_tests import factories
+        from release_tests.suites.diamo_base_access import (
+            expect_rejection, reject_invoice_mutations, temporary_user,
+        )
+
+        invoice = self.client.insert({
+            "doctype": "Sales Invoice", "company": factories.ensure_company(self.client),
+            "customer": factories.ensure_customer(self.client),
+            "items": [{"item_code": factories.ensure_item(self.client), "qty": 1, "rate": 100}],
+        })
+        with temporary_user(self.client, reduced=True) as (name, _):
+            frappe.set_user(name)
+            try:
+                reject_invoice_mutations(self.client, invoice)
+                for field in ("grand_total", "base_grand_total", "outstanding_amount"):
+                    expect_rejection(lambda: self.client.call(
+                        "frappe.client.get_value", doctype="Sales Invoice",
+                        filters={"name": invoice["name"]}, fieldname=field,
+                    ), 403, "PermissionError")
+            finally:
+                frappe.set_user(QA_USER)
+        self.assertEqual(self.client.get_doc("Sales Invoice", invoice["name"]).get("remarks"), invoice.get("remarks"))
+
     def run_flow(self, suite):
         context = {}
         for step in suite.build_steps(self.client.get_versions()):

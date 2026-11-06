@@ -1,6 +1,7 @@
 """Argentina receipt, ledger and cancellation through the public API."""
 
 from . import diamo_accounting as checks
+from . import diamo_receipt_edges
 from .base import ReleaseSuite, Step
 
 
@@ -8,7 +9,7 @@ class DiamoArgentinaPaymentsSuite(ReleaseSuite):
     name = "diamo_argentina_payments"
     required_app = "diamoerp_argentina"
     description = (
-        "ARS 100 receipt: explicit payment method, account movements, settlement and cancellation."
+        "ARS receipts: full and partial settlement, cent rounding, multiple invoices, ledger and cancellation."
     )
 
     def build_steps(self, versions):
@@ -18,6 +19,9 @@ class DiamoArgentinaPaymentsSuite(ReleaseSuite):
             Step("verify initial zero payment and enter receipt", self.receive),
             Step("verify bank and receivable ledger", self.verify),
             Step("cancel receipt and restore invoice balance", self.cancel),
+            Step("receive 33.33, 33.33 and 33.34 without residual debt", diamo_receipt_edges.partial_receipts),
+            Step("cancel earlier receipts, collect again and restore debt", diamo_receipt_edges.reverse_receipts),
+            Step("settle two invoices with one receipt and reverse both balances", diamo_receipt_edges.multiple_invoices),
         ]
 
     def receive(self, client, ctx):

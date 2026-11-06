@@ -13,12 +13,16 @@ class DiamoBaseAccessSuite(ReleaseSuite):
     name = "diamo_base_access"
     required_app = "diamoerp_base"
     description = (
-        "Dedicated API authentication, credential revocation, and reduced project user permissions."
+        "API authentication, secret rotation, disable/re-enable revocation, and reduced user invoice boundaries."
     )
     independent_steps = True
 
     def build_steps(self, versions):
         return [
+            Step("rotate API secret and reject previous credentials", self.rotate_credentials),
+            Step("disable API user and reject token and Basic credentials", self.disable_api_user),
+            Step("reduced user cannot read financial values or mutate invoices through RPC", self.reduced_invoice_rpc),
+            Step("QA cannot read or list the managed Diamo integration identity", self.managed_identity_visibility),
             Step(
                 "API token and Basic identity; block interactive login; revoke keys",
                 self.api_lifecycle,
@@ -27,6 +31,48 @@ class DiamoBaseAccessSuite(ReleaseSuite):
                 "reduced user can use tasks and links but cannot access invoices", self.reduced_user
             ),
         ]
+
+    def rotate_credentials(self, client, ctx):
+        with temporary_user(client, api=True) as (name, _):
+            old = client.call("frappe.core.doctype.user.user.generate_keys", user=name)
+            with isolated_client(client) as api:
+                api.use_token(old["api_key"], old["api_secret"])
+                assert_identity(api, name)
+                new = client.call("frappe.core.doctype.user.user.generate_keys", user=name)
+                if old["api_secret"] == new["api_secret"]:
+                    raise AssertionError("rotation must replace the API secret")
+                reject_credentials(api, old)
+                api.use_token(new["api_key"], new["api_secret"])
+                assert_identity(api, name)
+                expect_rejection(
+                    lambda: api.call("frappe.core.doctype.user.user.generate_keys", user=name),
+                    403, "PermissionError",
+                )
+                assert_identity(api, name)
+
+    def managed_identity_visibility(self, client, ctx):
+        name = "integracion@diamo.com.ar"
+        expect_rejection(lambda: client.get_doc("User", name), 403, "PermissionError")
+        rows = client.get_list("User", filters={"name": name}, fields=["name"])
+        if rows:
+            raise CheckFailed("managed identity hidden from QA lists", expected="no rows", actual="identity exposed")
+
+    def disable_api_user(self, client, ctx):
+        with temporary_user(client, api=True) as (name, _):
+            keys = client.call("frappe.core.doctype.user.user.generate_keys", user=name)
+            with isolated_client(client) as api:
+                api.use_token(keys["api_key"], keys["api_secret"])
+                assert_identity(api, name)
+                save_fields(client, name, enabled=0)
+                reject_credentials(api, keys)
+                stored = client.get_doc("User", name)
+                if stored.get("api_key") or stored.get("api_secret"):
+                    raise AssertionError("disabled API user must have no credentials")
+                save_fields(client, name, enabled=1)
+                reject_credentials(api, keys)
+                fresh = client.call("frappe.core.doctype.user.user.generate_keys", user=name)
+                api.use_token(fresh["api_key"], fresh["api_secret"])
+                assert_identity(api, name)
 
     def api_lifecycle(self, client, ctx):
         with temporary_user(client, api=True) as (name, password):
@@ -98,6 +144,27 @@ class DiamoBaseAccessSuite(ReleaseSuite):
                     value="Cancelled",
                 )
 
+    def reduced_invoice_rpc(self, client, ctx):
+        with temporary_user(client, reduced=True) as (name, password), isolated_client(client) as reduced:
+            reduced.login(name, password)
+            invoice = client.insert({
+                "doctype": "Sales Invoice", "company": "Diamo Release Test",
+                "customer": "Release Test Customer",
+                "items": [{"item_code": "RT-ITEM", "qty": 1, "rate": 100}],
+            })
+            try:
+                reject_invoice_mutations(reduced, invoice)
+                for field in ("grand_total", "base_grand_total", "outstanding_amount"):
+                    expect_rejection(lambda: reduced.call(
+                        "frappe.client.get_value", doctype="Sales Invoice",
+                        filters={"name": invoice["name"]}, fieldname=field,
+                    ), 403, "PermissionError")
+                stored = client.get_doc("Sales Invoice", invoice["name"])
+                if stored.get("remarks") != invoice.get("remarks"):
+                    raise AssertionError("denied RPC changed invoice remarks")
+            finally:
+                client.delete("Sales Invoice", invoice["name"])
+
     def reject_invoice_access(self, client, reduced, customer):
         invoice = client.insert(
             {
@@ -167,6 +234,17 @@ def temporary_user(client, *, api=False, reduced=False):
         save_fields(client, name, enabled=0)
 
 
+def reject_invoice_mutations(client, invoice):
+    expect_rejection(lambda: client.call(
+        "frappe.client.set_value", doctype="Sales Invoice", name=invoice["name"],
+        fieldname="remarks", value="Unauthorized release probe",
+    ), 403, "PermissionError")
+    expect_rejection(lambda: client.call(
+        "frappe.client.save", doc=json.dumps({**invoice, "remarks": "Unauthorized release probe"}),
+    ), 403, "PermissionError")
+    expect_rejection(lambda: client.delete("Sales Invoice", invoice["name"]), 403, "PermissionError")
+
+
 @contextmanager
 def isolated_client(parent):
     client = FrappeClient(
@@ -187,6 +265,14 @@ def save_fields(client, user, **fields):
 def assert_identity(client, expected):
     if client.call("frappe.auth.get_logged_user") != expected:
         raise AssertionError("authenticated identity does not match the test user")
+
+
+def reject_credentials(client, keys):
+    client.use_token(keys["api_key"], keys["api_secret"])
+    expect_rejection(lambda: client.call("frappe.auth.get_logged_user"), 401, "AuthenticationError")
+    encoded = base64.b64encode(f"{keys['api_key']}:{keys['api_secret']}".encode()).decode()
+    client.session.headers["Authorization"] = f"Basic {encoded}"
+    expect_rejection(lambda: client.call("frappe.auth.get_logged_user"), 401, "AuthenticationError")
 
 
 def expect_rejection(action, status, exc_type):

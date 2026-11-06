@@ -9,13 +9,15 @@ from .base import ReleaseSuite, Step
 class DiamoWithholdingsSuite(ReleaseSuite):
     name = "diamo_withholdings"
     required_app = "diamoerp_argentina"
-    description = "Opening purchase 1000.25: IIBB 2.5% = 25.01, bank 975.24, settlement and reversal."
+    description = "IIBB 2.5%: exact minimum, repeatable preview, rounded withholding, net payment, settlement and reversal."
 
     def build_steps(self, versions):
         return [
             Step("verify local withholding fixtures", self.prepare),
             Step("submit opening purchase and prepare payment", self.invoice),
             Step("exclude partial allocation below minimum base", self.below_minimum),
+            Step("withholding minimum includes 100 but excludes 99.99", self.minimum_boundary),
+            Step("repeated withholding preview leaves draft and debt unchanged", self.repeat_preview),
             Step("calculate IIBB base 1000.25 and rounded withholding 25.01", self.calculate),
             Step("apply withholding and submit net payment 975.24", self.pay),
             Step("verify retention document, accounts and settled debt", self.verify),
@@ -88,6 +90,42 @@ class DiamoWithholdingsSuite(ReleaseSuite):
         checks.amount(tax.get("base"), 1000.25, "withholding taxable base")
         checks.amount(tax.get("alicuota"), 2.5, "withholding rate")
         checks.amount(tax.get("monto_retenido"), 25.01, "rounded withholding")
+
+    def minimum_boundary(self, client, ctx):
+        payment = ctx["payment"]
+        try:
+            for value in (99.99, 100):
+                payment["references"][0]["allocated_amount"] = value
+                payment["paid_amount"] = payment["received_amount"] = value
+                payment["modes_of_payment"][0]["amount"] = value
+                payment = client.call("frappe.client.save", doc=json.dumps(payment))
+                result = client.call("diamoerp_argentina.retenciones.generar_retenciones",
+                                     entrada_de_pago=payment["name"])
+                if result.get("ganancias"):
+                    raise AssertionError("local IIBB fixture must not generate Ganancias")
+                if value < 100:
+                    if result.get("iibb"):
+                        raise AssertionError("99.99 is below the withholding minimum of 100")
+                else:
+                    taxes = result.get("iibb") or {}
+                    if set(taxes) != {"MENDOZA"}:
+                        raise AssertionError("exact minimum must generate only Mendoza withholding")
+                    checks.amount(taxes["MENDOZA"].get("base"), 100, "minimum withholding base")
+                    checks.amount(taxes["MENDOZA"].get("monto_retenido"), "2.50", "minimum withholding amount")
+        finally:
+            payment["references"][0]["allocated_amount"] = 1000.25
+            payment["paid_amount"] = payment["received_amount"] = 1000.25
+            payment["modes_of_payment"][0]["amount"] = 1000.25
+            ctx["payment"] = client.call("frappe.client.save", doc=json.dumps(payment))
+
+    def repeat_preview(self, client, ctx):
+        for _ in range(2):
+            self.calculate(client, ctx)
+        payment = client.get_doc("Payment Entry", ctx["payment"]["name"])
+        if payment.get("retenciones") or payment.get("docstatus") != 0:
+            raise AssertionError("preview must leave the draft without applied withholdings")
+        checks.amount(client.get_doc("Purchase Invoice", ctx["invoice"]["name"]).get("outstanding_amount"),
+                      "1000.25", "preview must not settle supplier debt")
 
     def pay(self, client, ctx):
         payment = ctx["payment"]

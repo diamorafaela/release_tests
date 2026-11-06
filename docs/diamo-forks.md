@@ -33,6 +33,64 @@ Usá las credenciales del ejecutor `release-qa@example.com` en Testing Site.
 
 ## Contratos cubiertos
 
+### Ampliación de credenciales y cobros
+
+El perfil incluye seis pasos nuevos dentro de `diamo_base_access` y `diamo_argentina_payments`:
+
+- Rotar el secreto API. Rechazar el secreto anterior con Token y Basic. Impedir que un usuario sin System Manager genere claves.
+- Deshabilitar y rehabilitar un usuario API temporal. Las claves anteriores siguen revocadas. Las claves nuevas funcionan.
+- Rechazar modificaciones y eliminación de facturas por el usuario reducido. Rechazar importes mediante `frappe.client.get_value`.
+- Cobrar 33.33, 33.33 y 33.34 sobre una factura de 100. Verificar cada saldo, asignación y movimiento contable.
+- Cancelar los cobros en orden de creación. Verificar saldos, cobrar nuevamente y volver a cancelar.
+- Cobrar dos facturas con un recibo. Verificar ambas asignaciones y restaurar ambos saldos al cancelar.
+
+Estas pruebas usan identidades temporales. No rotan las claves de Integración Diamo ni cambian las cuotas del sitio.
+La prueba existente de exposición financiera mediante listas sigue activa.
+
+Actualizá `release_tests` en los dos benches. Sincronizá el catálogo desde el sitio de control:
+
+```bash
+cd /home/frappe/pilot/benches/diamoerp-testing/sites
+../env/bin/python -m frappe.utils.bench_helper frappe \
+  --site tools.diamo.com.ar execute release_tests.profiles.install_diamo
+```
+
+La selección del perfil no cambia. El catálogo incorpora los pasos nuevos.
+Ejecutá una validación nueva con **Diamo Forks**. Los resultados históricos conservan sus pasos originales.
+
+Las pruebas locales de credenciales usan la autenticación real de Frappe y los RPC de Base.
+La validación remota comprueba además el transporte HTTP y los hooks de petición.
+
+### Segunda ampliación: mínimos fiscales e Integración Diamo
+
+El perfil agrega seis pasos:
+
+- Ocultar Integración Diamo en lectura directa y listas del ejecutor QA.
+- Excluir una percepción con base 99,99 e incluirla con base 100.
+- Redondear la percepción de una base 100,25 a 3,01. Conservar el resultado al guardar nuevamente.
+- Quitar y restaurar la percepción al cruzar el mínimo en una factura existente.
+- Excluir una retención con base 99,99 e incluirla con base 100, con importe 2,50.
+- Repetir la vista previa de retenciones sin aplicar retenciones ni cambiar la deuda.
+
+Las pruebas locales de Integración Diamo cubren además:
+
+- Aprovisionamiento repetido que conserva las credenciales.
+- Rechazo de administración y rotación por otro usuario con System Manager.
+- Exclusión de los cupos de usuarios ERP y API.
+- Conservación de la clasificación API y del rol obligatorio.
+- Rechazo de eliminación y cambio de nombre.
+
+Estos casos administrativos ejecutan cambios dentro de transacciones con rollback en `test.localhost`.
+La suite remota solo comprueba la visibilidad de la identidad administrada.
+
+**Fallo detectado localmente:** una factura que baja de 100 a 99,99 conserva una percepción de 3 y totaliza 102,99.
+Una factura nueva de 99,99 no incluye percepción. El paso de recálculo sigue fallando hasta corregir el producto.
+
+Para instalar esta ampliación, actualizá el motor en ambos benches y ejecutá `release_tests.profiles.install_diamo` en el control.
+El perfil conserva su selección de suites. La nueva validación incorpora los pasos agregados.
+
+### Matriz de contratos
+
 | Área | Evidencia |
 |---|---|
 | Pagos de Argentina | Mapper público, cobro inicial cero, medios de pago, importes, asignación, libro mayor y saldo. |
