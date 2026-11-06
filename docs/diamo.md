@@ -24,6 +24,9 @@ Desactiva el redondeo del total de esa factura para comprobar centavos de forma 
 
 ## Preparar el sitio
 
+Usá el [comando local de preparación y comprobación](site_setup.md) para crear los maestros
+y el ejecutor QA de forma repetible. Informa permisos, cupos y configuración pendientes.
+
 Usar un sitio de pruebas con estos maestros:
 
 - Company: `Diamo Release Test`, con moneda ARS y cuentas contables configuradas.

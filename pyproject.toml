@@ -35,8 +35,8 @@ packages = ["release_tests"]
 
 # Required by bench / Frappe Cloud to pick a compatible Frappe version. Without
 # this section "Add app from GitHub" refuses the repo. The harness does not import
-# frappe — this declares which bench the app may be installed into, not a runtime
-# dependency of the engine.
+# frappe in its HTTP engine. The optional site_setup package runs locally under
+# bench and imports Frappe only when its administrative commands are invoked.
 [tool.bench.frappe-dependencies]
 # The "-dev" lower bound is load-bearing, not cosmetic. Frappe Cloud compares with
 # prerelease-aware semantics, where a develop build reporting 17.0.0-dev does NOT
