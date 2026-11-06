@@ -130,7 +130,8 @@ class Preflight:
                                  "impuesto_retencion", "Release Test IIBB 2.5%")
             if "DRT-APERTURA-COMPRA-" not in frappe.get_meta("Purchase Invoice").get_field("naming_series").options.splitlines():
                 self.blockers.append("Purchase Invoice is missing the DRT-APERTURA-COMPRA- naming series.")
-            for action in ("read", "create", "write", "submit", "cancel"):
+            # Payment submission creates Retencion internally with ignore_permissions=True.
+            for action in ("read", "write", "submit", "cancel"):
                 self.permission("Retencion", action)
 
     def verify_fields(self, doctype, name, expected):
